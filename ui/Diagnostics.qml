@@ -1,21 +1,27 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
+import ui 1.0
 
 Item {
     id: diagnostics
     
     signal backRequested()
     
-    // Extended telemetry data
+    // Theme reference
+    readonly property var theme: Theme
+    
+    // Telemetry object passed from main.qml
+    property var telemetry: null
+    
+    // Extended telemetry data (mutable properties that update from signals)
     property real speed: 0.0
-    property real rpm: 0
+    property int rpm: 0
     property real voltage: 0.0
     property real currentMotor: 0.0
     property real currentBattery: 0.0
     property real power: 0.0
     property real tempMos: 0.0
-    property real tempMotor: 0.0
     property real dutyCycle: 0.0
     property real efficiency: 0.0
     property real ampHoursConsumed: 0.0
@@ -26,59 +32,117 @@ Item {
     property int tachometerAbs: 0
     property int faultCode: 0
     
-    readonly property color primaryColor: "#00FF00"
-    readonly property color warningColor: "#FFAA00"
-    readonly property color dangerColor: "#FF0000"
-    readonly property color bgColor: "#000000"
-    readonly property color textColor: "#FFFFFF"
+    // Connect to telemetry signals when telemetry object is available
+    Connections {
+        target: telemetry
+        function onSpeedChanged(value) { speed = value }
+        function onRpmChanged(value) { rpm = value }
+        function onVoltageChanged(value) { voltage = value }
+        function onCurrentMotorChanged(value) { currentMotor = value }
+        function onCurrentBatteryChanged(value) { currentBattery = value }
+        function onPowerChanged(value) { power = value }
+        function onTempMosChanged(value) { tempMos = value }
+        function onDutyCycleChanged(value) { dutyCycle = value }
+        function onEfficiencyChanged(value) { efficiency = value }
+        function onAmpHoursConsumedChanged(value) { ampHoursConsumed = value }
+        function onAmpHoursChargedChanged(value) { ampHoursCharged = value }
+        function onWattHoursConsumedChanged(value) { wattHoursConsumed = value }
+        function onWattHoursChargedChanged(value) { wattHoursCharged = value }
+        function onTachometerChanged(value) { tachometer = value }
+        function onTachometerAbsChanged(value) { tachometerAbs = value }
+        function onFaultCodeChanged(value) { faultCode = value }
+    }
     
+    // Initialize values from telemetry if available
+    Component.onCompleted: {
+        if (telemetry) {
+            speed = telemetry.speed
+            rpm = telemetry.rpm
+            voltage = telemetry.voltage
+            currentMotor = telemetry.currentMotor
+            currentBattery = telemetry.currentBattery
+            power = telemetry.power
+            tempMos = telemetry.tempMos
+            dutyCycle = telemetry.dutyCycle
+            efficiency = telemetry.efficiency
+            ampHoursConsumed = telemetry.ampHoursConsumed
+            ampHoursCharged = telemetry.ampHoursCharged
+            wattHoursConsumed = telemetry.wattHoursConsumed
+            wattHoursCharged = telemetry.wattHoursCharged
+            tachometer = telemetry.tachometer
+            tachometerAbs = telemetry.tachometerAbs
+            faultCode = telemetry.faultCode
+        }
+    }
+    
+    // Automotive-grade black background
     Rectangle {
         anchors.fill: parent
-        color: bgColor
+        color: theme.background
         
         ColumnLayout {
             anchors.fill: parent
-            anchors.margins: 30
-            spacing: 20
+            anchors.margins: theme.margin
+            spacing: theme.margin
             
             // Header
             RowLayout {
                 Layout.fillWidth: true
+                spacing: theme.spacing
                 
                 Button {
-                    text: "← BACK"
-                    font.pixelSize: 18
-                    font.bold: true
+                    id: backButton
+                    Layout.preferredWidth: theme.gridUnit * 14
+                    Layout.preferredHeight: theme.gridUnit * 7
                     
                     background: Rectangle {
-                        color: parent.pressed ? "#003300" : "#001100"
-                        border.color: primaryColor
-                        border.width: 2
-                        radius: 8
+                        color: "transparent"
+                        radius: theme.cardRadius
+                        border.color: parent.pressed ? theme.accentPrimary : theme.borderSubtle
+                        border.width: theme.borderWidth
+                        
+                        Behavior on border.color {
+                            ColorAnimation {
+                                duration: 150
+                                easing.type: Easing.OutCubic
+                            }
+                        }
                     }
                     
                     contentItem: Text {
-                        text: parent.text
-                        color: primaryColor
+                        text: "← back"
+                        font.family: theme.fontFamily
+                        font.pixelSize: theme.fontSizeSmall
+                        font.weight: Font.Normal
+                        color: parent.pressed ? theme.accentPrimary : theme.textSecondary
+                        font.letterSpacing: 1.2
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
-                        font: parent.font
+                        
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 150
+                                easing.type: Easing.OutCubic
+                            }
+                        }
                     }
                     
                     onClicked: diagnostics.backRequested()
                 }
                 
                 Text {
-                    text: "DIAGNOSTICS"
-                    font.pixelSize: 36
-                    font.bold: true
-                    color: primaryColor
+                    text: "diagnostics"
+                    font.family: theme.fontFamily
+                    font.pixelSize: theme.fontSizeLarge
+                    font.weight: Font.Light
+                    color: theme.textPrimary
+                    font.letterSpacing: 2
                     Layout.fillWidth: true
                     horizontalAlignment: Text.AlignHCenter
                 }
                 
                 Item {
-                    width: backButton.width
+                    Layout.preferredWidth: backButton.width
                 }
             }
             
@@ -86,185 +150,110 @@ Item {
             ScrollView {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+                clip: true
                 
                 GridLayout {
                     width: parent.width
                     columns: 3
-                    columnSpacing: 20
-                    rowSpacing: 20
+                    columnSpacing: theme.spacing
+                    rowSpacing: theme.spacing
                     
                     // Row 1: Speed, RPM, Voltage
                     TelemetryCard {
                         title: "SPEED"
-                        value: Math.round(diagnostics.speed).toString()
+                        value: Math.round(speed).toString()
                         unit: "km/h"
-                        Layout.fillWidth: true
                     }
                     
                     TelemetryCard {
                         title: "RPM"
-                        value: Math.round(diagnostics.rpm).toLocaleString()
+                        value: Math.round(rpm).toLocaleString()
                         unit: ""
-                        Layout.fillWidth: true
                     }
                     
                     TelemetryCard {
                         title: "VOLTAGE"
-                        value: diagnostics.voltage.toFixed(2)
+                        value: voltage.toFixed(2)
                         unit: "V"
-                        Layout.fillWidth: true
                     }
                     
                     // Row 2: Currents
                     TelemetryCard {
                         title: "MOTOR CURRENT"
-                        value: diagnostics.currentMotor.toFixed(2)
+                        value: currentMotor.toFixed(2)
                         unit: "A"
-                        Layout.fillWidth: true
                     }
                     
                     TelemetryCard {
                         title: "BATTERY CURRENT"
-                        value: diagnostics.currentBattery.toFixed(2)
+                        value: currentBattery.toFixed(2)
                         unit: "A"
-                        Layout.fillWidth: true
                     }
                     
                     TelemetryCard {
                         title: "POWER"
-                        value: Math.round(diagnostics.power).toString()
+                        value: Math.round(power).toString()
                         unit: "W"
-                        Layout.fillWidth: true
                     }
                     
-                    // Row 3: Temperatures
+                    // Row 3: Temperature & Efficiency
                     TelemetryCard {
                         title: "MOSFET TEMP"
-                        value: diagnostics.tempMos.toFixed(1)
+                        value: tempMos.toFixed(1)
                         unit: "°C"
-                        color: getTempColor(diagnostics.tempMos)
-                        Layout.fillWidth: true
-                    }
-                    
-                    TelemetryCard {
-                        title: "MOTOR TEMP"
-                        value: diagnostics.tempMotor.toFixed(1)
-                        unit: "°C"
-                        color: getTempColor(diagnostics.tempMotor)
-                        Layout.fillWidth: true
+                        accentColor: theme.getTempColor(tempMos)
                     }
                     
                     TelemetryCard {
                         title: "EFFICIENCY"
-                        value: diagnostics.efficiency.toFixed(2)
+                        value: efficiency.toFixed(2)
                         unit: "%"
-                        Layout.fillWidth: true
+                    }
+                    
+                    TelemetryCard {
+                        title: "DUTY CYCLE"
+                        value: (dutyCycle * 100).toFixed(1)
+                        unit: "%"
                     }
                     
                     // Row 4: Energy
                     TelemetryCard {
                         title: "Ah CONSUMED"
-                        value: diagnostics.ampHoursConsumed.toFixed(3)
+                        value: ampHoursConsumed.toFixed(3)
                         unit: "Ah"
-                        Layout.fillWidth: true
                     }
                     
                     TelemetryCard {
                         title: "Ah CHARGED"
-                        value: diagnostics.ampHoursCharged.toFixed(3)
+                        value: ampHoursCharged.toFixed(3)
                         unit: "Ah"
-                        Layout.fillWidth: true
                     }
                     
                     TelemetryCard {
                         title: "Wh CONSUMED"
-                        value: diagnostics.wattHoursConsumed.toFixed(2)
+                        value: wattHoursConsumed.toFixed(2)
                         unit: "Wh"
-                        Layout.fillWidth: true
                     }
                     
                     // Row 5: Tachometer and Fault
                     TelemetryCard {
                         title: "TACHOMETER"
-                        value: diagnostics.tachometer.toString()
+                        value: tachometer.toString()
                         unit: ""
-                        Layout.fillWidth: true
                     }
                     
                     TelemetryCard {
                         title: "TACHOMETER ABS"
-                        value: diagnostics.tachometerAbs.toString()
+                        value: tachometerAbs.toString()
                         unit: ""
-                        Layout.fillWidth: true
                     }
                     
                     TelemetryCard {
                         title: "FAULT CODE"
-                        value: diagnostics.faultCode.toString()
-                        unit: diagnostics.faultCode === 0 ? "(OK)" : "(ERROR)"
-                        color: diagnostics.faultCode === 0 ? primaryColor : dangerColor
-                        Layout.fillWidth: true
+                        value: faultCode.toString()
+                        unit: faultCode === 0 ? "(OK)" : "(ERROR)"
+                        accentColor: faultCode === 0 ? theme.accentPrimary : theme.accentDanger
                     }
-                    
-                    // Row 6: Duty Cycle
-                    TelemetryCard {
-                        title: "DUTY CYCLE"
-                        value: (diagnostics.dutyCycle * 100).toFixed(1)
-                        unit: "%"
-                        Layout.fillWidth: true
-                        Layout.columnSpan: 3
-                    }
-                }
-            }
-        }
-    }
-    
-    function getTempColor(temp) {
-        if (temp < 60) return primaryColor
-        if (temp < 80) return warningColor
-        return dangerColor
-    }
-    
-    // Reusable telemetry card component
-    component TelemetryCard: Rectangle {
-        property string title: ""
-        property string value: ""
-        property string unit: ""
-        property color color: primaryColor
-        
-        height: 120
-        color: "#111111"
-        radius: 10
-        border.color: color
-        border.width: 2
-        
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 10
-            spacing: 5
-            
-            Text {
-                text: parent.parent.title
-                font.pixelSize: 14
-                color: textColor
-                Layout.alignment: Qt.AlignHCenter
-            }
-            
-            RowLayout {
-                Layout.alignment: Qt.AlignHCenter
-                spacing: 5
-                
-                Text {
-                    text: parent.parent.value
-                    font.pixelSize: 32
-                    color: parent.parent.color
-                    font.bold: true
-                }
-                
-                Text {
-                    text: parent.parent.unit
-                    font.pixelSize: 16
-                    color: textColor
                 }
             }
         }

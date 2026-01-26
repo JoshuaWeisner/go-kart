@@ -1,6 +1,7 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
+import ui 1.0
 
 ApplicationWindow {
     id: window
@@ -18,23 +19,22 @@ ApplicationWindow {
         }
     }
     
+    // Store telemetry reference to pass to views
+    property var telemetryBridge: typeof telemetry !== 'undefined' ? telemetry : null
+    
     // Main view stack
     StackView {
         id: stackView
         anchors.fill: parent
-        initialItem: dashboardView
-        
-        Component {
-            id: dashboardView
-            Dashboard {
-                onDiagnosticsRequested: {
-                    stackView.push(diagnosticsView)
-                }
+        initialItem: Dashboard {
+            telemetry: window.telemetryBridge
+            onDiagnosticsRequested: {
+                stackView.push(diagnosticsViewComponent, { telemetry: window.telemetryBridge })
             }
         }
         
         Component {
-            id: diagnosticsView
+            id: diagnosticsViewComponent
             Diagnostics {
                 onBackRequested: {
                     stackView.pop()

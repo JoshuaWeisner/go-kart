@@ -1,0 +1,6 @@
+module ui
+singleton Theme 1.0 Theme.qml
+Dashboard 1.0 Dashboard.qml
+Diagnostics 1.0 Diagnostics.qml
+TelemetryCard 1.0 TelemetryCard.qml
+CircularGauge 1.0 CircularGauge.qml

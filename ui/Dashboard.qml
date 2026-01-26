@@ -1,408 +1,326 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
+import ui 1.0
 
 Item {
     id: dashboard
     
     signal diagnosticsRequested()
     
-    // Telemetry data (bound from Python backend)
-    property real speed: 0.0  // km/h (calculated from RPM)
-    property real rpm: 0
+    // Theme reference
+    readonly property var theme: Theme
+    
+    // Telemetry object passed from main.qml
+    property var telemetry: null
+    
+    // Telemetry data (mutable properties that update from signals)
+    property real speed: 0.0
+    property int rpm: 0
     property real voltage: 0.0
     property real currentMotor: 0.0
     property real currentBattery: 0.0
     property real power: 0.0
     property real tempMos: 0.0
-    property real tempMotor: 0.0
     property real dutyCycle: 0.0
     property real efficiency: 0.0
     
-    // Visual constants
-    readonly property color primaryColor: "#00FF00"  // Bright green for visibility
-    readonly property color warningColor: "#FFAA00"
-    readonly property color dangerColor: "#FF0000"
-    readonly property color bgColor: "#000000"
-    readonly property color textColor: "#FFFFFF"
+    // Connect to telemetry signals when telemetry object is available
+    Connections {
+        target: telemetry
+        function onSpeedChanged(value) { speed = value }
+        function onRpmChanged(value) { rpm = value }
+        function onVoltageChanged(value) { voltage = value }
+        function onCurrentMotorChanged(value) { currentMotor = value }
+        function onCurrentBatteryChanged(value) { currentBattery = value }
+        function onPowerChanged(value) { power = value }
+        function onTempMosChanged(value) { tempMos = value }
+        function onDutyCycleChanged(value) { dutyCycle = value }
+        function onEfficiencyChanged(value) { efficiency = value }
+    }
     
+    // Initialize values from telemetry if available
+    Component.onCompleted: {
+        if (telemetry) {
+            speed = telemetry.speed
+            rpm = telemetry.rpm
+            voltage = telemetry.voltage
+            currentMotor = telemetry.currentMotor
+            currentBattery = telemetry.currentBattery
+            power = telemetry.power
+            tempMos = telemetry.tempMos
+            dutyCycle = telemetry.dutyCycle
+            efficiency = telemetry.efficiency
+        }
+    }
+    
+    // Automotive-grade black background
     Rectangle {
         anchors.fill: parent
-        color: bgColor
+        color: theme.background
         
-        // Main layout
-        RowLayout {
+        ColumnLayout {
             anchors.fill: parent
-            anchors.margins: 40
-            spacing: 40
+            anchors.margins: theme.margin
+            spacing: theme.margin
             
-            // Left panel - Speed and RPM
-            ColumnLayout {
-                Layout.preferredWidth: parent.width * 0.4
-                spacing: 30
+            // Top Row: Primary Gauges (Speed & RPM)
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                spacing: theme.margin * 3
                 
-                // Large Speed Display
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 300
-                    color: "#111111"
-                    radius: 20
-                    border.color: primaryColor
-                    border.width: 3
-                    
-                    ColumnLayout {
-                        anchors.centerIn: parent
-                        spacing: 10
-                        
-                        Text {
-                            text: "SPEED"
-                            font.pixelSize: 32
-                            color: textColor
-                            font.bold: true
-                            Layout.alignment: Qt.AlignHCenter
-                        }
-                        
-                        Text {
-                            text: Math.round(dashboard.speed).toString()
-                            font.pixelSize: 120
-                            color: primaryColor
-                            font.bold: true
-                            Layout.alignment: Qt.AlignHCenter
-                        }
-                        
-                        Text {
-                            text: "km/h"
-                            font.pixelSize: 36
-                            color: textColor
-                            Layout.alignment: Qt.AlignHCenter
-                        }
-                    }
+                Item { Layout.fillWidth: true }
+                
+                // Speed Gauge (Primary)
+                CircularGauge {
+                    Layout.alignment: Qt.AlignCenter
+                    size: 350
+                    value: speed
+                    minimumValue: 0
+                    maximumValue: 80
+                    unit: "km/h"
+                    label: "SPEED"
                 }
                 
-                // RPM Display
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 200
-                    color: "#111111"
-                    radius: 15
-                    border.color: primaryColor
-                    border.width: 2
-                    
-                    ColumnLayout {
-                        anchors.centerIn: parent
-                        spacing: 5
-                        
-                        Text {
-                            text: "RPM"
-                            font.pixelSize: 24
-                            color: textColor
-                            Layout.alignment: Qt.AlignHCenter
-                        }
-                        
-                        Text {
-                            text: Math.round(dashboard.rpm).toLocaleString()
-                            font.pixelSize: 64
-                            color: primaryColor
-                            font.bold: true
-                            Layout.alignment: Qt.AlignHCenter
-                        }
-                    }
+                Item { Layout.fillWidth: true }
+                
+                // RPM Gauge (Primary)
+                CircularGauge {
+                    Layout.alignment: Qt.AlignCenter
+                    size: 350
+                    value: rpm
+                    minimumValue: 0
+                    maximumValue: 6000
+                    redlineValue: 5000
+                    showRedline: true
+                    unit: "rpm"
+                    label: "RPM"
                 }
                 
-                // Duty Cycle Bar
+                Item { Layout.fillWidth: true }
+            }
+            
+            // Bottom Row: Secondary Gauges & Efficiency
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 280
+                spacing: theme.margin * 2
+                
+                Item { Layout.fillWidth: true }
+                
+                // Voltage Gauge (Secondary)
+                CircularGauge {
+                    Layout.alignment: Qt.AlignCenter
+                    size: 200
+                    value: voltage
+                    minimumValue: 0
+                    maximumValue: 60
+                    unit: "v"
+                    label: "VOLTAGE"
+                }
+                
+                Item { Layout.fillWidth: true }
+                
+                // Efficiency Box (Trip Computer Style)
                 Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 80
-                    color: "#111111"
-                    radius: 10
-                    border.color: primaryColor
-                    border.width: 2
+                    Layout.alignment: Qt.AlignCenter
+                    Layout.preferredWidth: 180
+                    Layout.preferredHeight: 280
+                    color: theme.glassBackground
+                    border.color: theme.glassBorder
+                    border.width: theme.borderWidth
+                    radius: theme.radiusMedium
                     
                     ColumnLayout {
                         anchors.fill: parent
-                        anchors.margins: 10
-                        spacing: 5
+                        anchors.margins: theme.spacing
+                        spacing: theme.spacingSmall
                         
                         Text {
-                            text: "THROTTLE"
-                            font.pixelSize: 18
-                            color: textColor
+                            text: "efficiency".toUpperCase()
+                            font.family: theme.fontFamily
+                            font.pixelSize: theme.fontSizeXSmall
+                            font.weight: Font.Normal
+                            color: theme.textSecondary
+                            font.letterSpacing: 2
+                            Layout.alignment: Qt.AlignHCenter
                         }
                         
-                        Rectangle {
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 30
-                            color: "#222222"
-                            radius: 5
+                        Item { Layout.fillHeight: true }
+                        
+                        Text {
+                            id: effValue
+                            text: efficiency.toFixed(1)
+                            font.family: theme.fontFamilyMono
+                            font.pixelSize: parent.width * 0.25
+                            font.weight: Font.Light
+                            color: theme.accentSuccess
+                            Layout.alignment: Qt.AlignHCenter
                             
-                            Rectangle {
-                                width: parent.width * Math.max(0, Math.min(1, dashboard.dutyCycle))
-                                height: parent.height
-                                color: primaryColor
-                                radius: 5
-                                
-                                Behavior on width {
-                                    NumberAnimation { duration: 100 }
+                            property real animatedValue: efficiency
+                            
+                            Behavior on animatedValue {
+                                NumberAnimation {
+                                    duration: 400
+                                    easing.type: Easing.OutCubic
                                 }
                             }
                         }
                         
                         Text {
-                            text: Math.round(dashboard.dutyCycle * 100) + "%"
-                            font.pixelSize: 20
-                            color: primaryColor
-                            font.bold: true
+                            text: "%"
+                            font.family: theme.fontFamilyMono
+                            font.pixelSize: theme.fontSizeSmall
+                            color: theme.textTertiary
+                            Layout.alignment: Qt.AlignHCenter
+                        }
+                        
+                        Item { Layout.fillHeight: true }
+                        
+                        // Power readout
+                        Text {
+                            text: Math.round(power) + "W"
+                            font.family: theme.fontFamilyMono
+                            font.pixelSize: theme.fontSizeXSmall
+                            color: theme.textTertiary
+                            Layout.alignment: Qt.AlignHCenter
                         }
                     }
                 }
+                
+                Item { Layout.fillWidth: true }
+                
+                // Current Gauge (Secondary)
+                CircularGauge {
+                    Layout.alignment: Qt.AlignCenter
+                    size: 200
+                    value: currentMotor
+                    minimumValue: 0
+                    maximumValue: 200
+                    unit: "a"
+                    label: "CURRENT"
+                }
+                
+                Item { Layout.fillWidth: true }
             }
             
-            // Center panel - Power and Current
-            ColumnLayout {
+            // Bottom Bar: MOSFET Temperature & Diagnostics
+            RowLayout {
                 Layout.fillWidth: true
-                spacing: 20
+                Layout.preferredHeight: theme.gridUnit * 6
+                spacing: theme.margin
                 
-                // Power Display
+                // MOSFET Temperature Bar
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 250
-                    color: "#111111"
-                    radius: 20
-                    border.color: primaryColor
-                    border.width: 3
+                    Layout.preferredHeight: parent.height
+                    color: theme.glassBackground
+                    border.color: theme.glassBorder
+                    border.width: theme.borderWidth
+                    radius: theme.radiusMedium
                     
-                    ColumnLayout {
-                        anchors.centerIn: parent
-                        spacing: 10
-                        
-                        Text {
-                            text: "POWER"
-                            font.pixelSize: 28
-                            color: textColor
-                            font.bold: true
-                            Layout.alignment: Qt.AlignHCenter
-                        }
-                        
-                        Text {
-                            text: Math.round(dashboard.power).toString()
-                            font.pixelSize: 96
-                            color: primaryColor
-                            font.bold: true
-                            Layout.alignment: Qt.AlignHCenter
-                        }
-                        
-                        Text {
-                            text: "W"
-                            font.pixelSize: 32
-                            color: textColor
-                            Layout.alignment: Qt.AlignHCenter
-                        }
-                    }
-                }
-                
-                // Current readings
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 20
-                    
-                    // Motor Current
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 180
-                        color: "#111111"
-                        radius: 15
-                        border.color: primaryColor
-                        border.width: 2
-                        
-                        ColumnLayout {
-                            anchors.centerIn: parent
-                            spacing: 5
-                            
-                            Text {
-                                text: "MOTOR CURRENT"
-                                font.pixelSize: 18
-                                color: textColor
-                                Layout.alignment: Qt.AlignHCenter
-                            }
-                            
-                            Text {
-                                text: dashboard.currentMotor.toFixed(1) + " A"
-                                font.pixelSize: 48
-                                color: primaryColor
-                                font.bold: true
-                                Layout.alignment: Qt.AlignHCenter
-                            }
-                        }
-                    }
-                    
-                    // Battery Current
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 180
-                        color: "#111111"
-                        radius: 15
-                        border.color: primaryColor
-                        border.width: 2
-                        
-                        ColumnLayout {
-                            anchors.centerIn: parent
-                            spacing: 5
-                            
-                            Text {
-                                text: "BATTERY CURRENT"
-                                font.pixelSize: 18
-                                color: textColor
-                                Layout.alignment: Qt.AlignHCenter
-                            }
-                            
-                            Text {
-                                text: dashboard.currentBattery.toFixed(1) + " A"
-                                font.pixelSize: 48
-                                color: primaryColor
-                                font.bold: true
-                                Layout.alignment: Qt.AlignHCenter
-                            }
-                        }
-                    }
-                }
-            }
-            
-            // Right panel - Voltage, Temp, Efficiency
-            ColumnLayout {
-                Layout.preferredWidth: parent.width * 0.3
-                spacing: 20
-                
-                // Voltage Display
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 200
-                    color: "#111111"
-                    radius: 15
-                    border.color: primaryColor
-                    border.width: 2
-                    
-                    ColumnLayout {
-                        anchors.centerIn: parent
-                        spacing: 5
-                        
-                        Text {
-                            text: "VOLTAGE"
-                            font.pixelSize: 24
-                            color: textColor
-                            Layout.alignment: Qt.AlignHCenter
-                        }
-                        
-                        Text {
-                            text: dashboard.voltage.toFixed(1) + " V"
-                            font.pixelSize: 64
-                            color: primaryColor
-                            font.bold: true
-                            Layout.alignment: Qt.AlignHCenter
-                        }
-                    }
-                }
-                
-                // Temperature Display
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 200
-                    color: "#111111"
-                    radius: 15
-                    border.color: getTempColor()
-                    border.width: 2
-                    
-                    ColumnLayout {
-                        anchors.centerIn: parent
-                        spacing: 10
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: theme.spacing
+                        spacing: theme.spacing
                         
                         Text {
                             text: "MOSFET"
-                            font.pixelSize: 18
-                            color: textColor
-                            Layout.alignment: Qt.AlignHCenter
+                            font.family: theme.fontFamily
+                            font.pixelSize: theme.fontSizeXSmall
+                            font.weight: Font.Normal
+                            color: theme.textSecondary
+                            font.letterSpacing: 1.5
+                        }
+                        
+                        // Temperature bar
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: theme.gridUnit
+                            color: theme.gaugeTrack
+                            radius: height / 2
+                            
+                            Rectangle {
+                                width: Math.min(1, tempMos / 100) * parent.width
+                                height: parent.height
+                                color: theme.getTempColor(tempMos)
+                                radius: parent.radius
+                                
+                                Behavior on width {
+                                    NumberAnimation {
+                                        duration: 400
+                                        easing.type: Easing.OutCubic
+                                    }
+                                }
+                                
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 400
+                                        easing.type: Easing.OutCubic
+                                    }
+                                }
+                            }
                         }
                         
                         Text {
-                            text: Math.round(dashboard.tempMos) + "°C"
-                            font.pixelSize: 48
-                            color: getTempColor()
-                            font.bold: true
-                            Layout.alignment: Qt.AlignHCenter
-                        }
-                        
-                        Text {
-                            text: "MOTOR: " + Math.round(dashboard.tempMotor) + "°C"
-                            font.pixelSize: 20
-                            color: getTempColor()
-                            Layout.alignment: Qt.AlignHCenter
-                        }
-                    }
-                }
-                
-                // Efficiency
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 150
-                    color: "#111111"
-                    radius: 15
-                    border.color: primaryColor
-                    border.width: 2
-                    
-                    ColumnLayout {
-                        anchors.centerIn: parent
-                        spacing: 5
-                        
-                        Text {
-                            text: "EFFICIENCY"
-                            font.pixelSize: 18
-                            color: textColor
-                            Layout.alignment: Qt.AlignHCenter
-                        }
-                        
-                        Text {
-                            text: dashboard.efficiency.toFixed(1) + "%"
-                            font.pixelSize: 42
-                            color: primaryColor
-                            font.bold: true
-                            Layout.alignment: Qt.AlignHCenter
+                            text: Math.round(tempMos) + "°C"
+                            font.family: theme.fontFamilyMono
+                            font.pixelSize: theme.fontSizeSmall
+                            font.weight: Font.Light
+                            color: theme.getTempColor(tempMos)
+                            Layout.preferredWidth: theme.gridUnit * 8
+                            
+                            Behavior on color {
+                                ColorAnimation {
+                                    duration: 400
+                                    easing.type: Easing.OutCubic
+                                }
+                            }
                         }
                     }
                 }
                 
                 // Diagnostics Button
                 Button {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 60
-                    text: "DIAGNOSTICS"
-                    font.pixelSize: 20
-                    font.bold: true
+                    Layout.preferredWidth: theme.gridUnit * 20
+                    Layout.preferredHeight: parent.height
                     
                     background: Rectangle {
-                        color: parent.pressed ? "#003300" : "#001100"
-                        border.color: primaryColor
-                        border.width: 2
-                        radius: 10
+                        color: "transparent"
+                        radius: theme.radiusMedium
+                        border.color: parent.pressed ? theme.accentPrimary : theme.glassBorder
+                        border.width: theme.borderWidth
+                        
+                        Behavior on border.color {
+                            ColorAnimation {
+                                duration: 200
+                                easing.type: Easing.OutCubic
+                            }
+                        }
                     }
                     
                     contentItem: Text {
-                        text: parent.text
-                        color: primaryColor
+                        text: "DIAGNOSTICS"
+                        font.family: theme.fontFamily
+                        font.pixelSize: theme.fontSizeSmall
+                        font.weight: Font.Normal
+                        color: parent.pressed ? theme.accentPrimary : theme.textSecondary
+                        font.letterSpacing: 2
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
-                        font: parent.font
+                        
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 200
+                                easing.type: Easing.OutCubic
+                            }
+                        }
                     }
                     
                     onClicked: dashboard.diagnosticsRequested()
                 }
             }
         }
-    }
-    
-    // Helper function to get temperature color
-    function getTempColor() {
-        var maxTemp = Math.max(dashboard.tempMos, dashboard.tempMotor)
-        if (maxTemp < 60) return primaryColor
-        if (maxTemp < 80) return warningColor
-        return dangerColor
     }
 }
