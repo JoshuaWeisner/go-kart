@@ -1,0 +1,105 @@
+# Go-Kart Telemetry Dashboard - Cursor AI Rules
+
+## Project Overview
+This is a high-performance HMI for an electric go-kart using:
+- **Hardware:** Flipsky FSESC75200 Pro V2.0 (VESC-based) + 80100 Outrunner (130KV)
+- **Platform:** Raspberry Pi 4/5 with CAN-SPI Click (MCP2515)
+- **Stack:** Python middleware + Qt/QML UI
+
+## Architecture Principles
+
+### 1. Hardware Abstraction
+- **CAN Manager** (`middleware/can_manager.py`) provides HAL that works on both real hardware (SocketCAN) and virtual mode
+- Always support `--virtual` flag for cross-platform development
+- Never hardcode hardware-specific paths or assumptions
+
+### 2. Decoupled Data Flow
+- **Middleware** (Team B): CAN parsing, VESC decoding, signal/slot management
+- **UI Layer** (Team C): Pure QML, receives data via Qt properties/signals
+- Use `TelemetryBridge` (main.py) as the single bridge between layers
+- QML should NEVER directly access CAN or hardware
+
+### 3. VESC Protocol
+- VESC sends status data across **5 CAN frames** (IDs 0x000002-0x000006)
+- Must merge frames to get complete telemetry
+- All values use specific scaling factors (see `vesc_codec.py` comments)
+- Bit-shifting and endianness are critical - use `struct.pack/unpack` carefully
+
+### 4. Performance Requirements
+- Target: <50ms latency from CAN to UI update
+- Use Qt signals/properties for efficient QML binding
+- Avoid blocking operations in CAN receive loop
+- QML should use hardware-accelerated rendering
+
+## Code Style
+
+### Python
+- Use type hints where practical
+- Follow PEP 8
+- Use dataclasses for structured data (e.g., `VESCStatus`)
+- Thread-safe operations for CAN callbacks
+
+### QML
+- Use Qt Quick Controls 2.15
+- Prefer declarative bindings over imperative updates
+- Use `readonly property` for constants
+- Color scheme: Bright green (#00FF00) for visibility in bright sunlight
+
+## File Organization
+
+```
+/middleware    # CAN & VESC decoding (Team B)
+/ui            # QML interface (Team C)
+/mock          # Virtualization for testing
+main.py        # Entry point, bridges middleware ↔ UI
+```
+
+## Testing Strategy
+
+1. **Virtual Mode First**: Always test with `--virtual` flag on macOS/Windows
+2. **Mock Simulator**: Use `mock/simulator.py` to generate realistic VESC packets
+3. **Hardware Last**: Only test on real hardware after virtual mode works
+
+## Common Tasks
+
+### Adding New Telemetry Parameter
+1. Add field to `VESCStatus` dataclass in `vesc_codec.py`
+2. Decode in appropriate `_decode_status_N()` method
+3. Add property to `TelemetryBridge` in `main.py`
+4. Expose to QML via property binding
+5. Update QML files to display new value
+
+### Debugging CAN Issues
+- Use `can_manager.send()` to inject test messages
+- Check CAN IDs match VESC specification (0x000002-0x000006)
+- Verify byte order (little-endian) in `struct.unpack`
+- Enable verbose logging in `can_manager.py`
+
+### UI Performance Issues
+- Profile with Qt Creator's QML Profiler
+- Check for excessive property updates
+- Use `Behavior` animations sparingly
+- Consider `ListView` virtualization for large datasets
+
+## Hardware Notes
+
+### Raspberry Pi Setup
+```bash
+# Enable CAN interface (if using CAN-SPI Click)
+sudo modprobe can
+sudo modprobe can_raw
+sudo modprobe mcp251x
+sudo ip link set can0 up type can bitrate 500000
+```
+
+### VESC Configuration
+- CAN baudrate: 500kbps (standard)
+- Status update rate: 50Hz (configurable in VESC Tool)
+- Ensure VESC CAN ID matches expected range
+
+## Future Enhancements
+- Data logging to CSV/SQLite
+- Lap timer with GPS integration
+- Predictive thermal management
+- Real-time efficiency optimization suggestions
+- Multi-controller support (dual motor setups)
