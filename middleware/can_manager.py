@@ -1,189 +1,93 @@
 """
 CAN Manager - Hardware Abstraction Layer (HAL)
-Provides a unified interface for CAN bus communication, supporting both
-real hardware (SocketCAN on Linux/Raspberry Pi) and virtual CAN for development.
+Optimized for Raspberry Pi + CAN SPI Click (10MHz) 
+Targeting FSESC75200 (VESC 500k Bitrate)
 """
 
-import socket
+import can
 import struct
 import threading
-import time
-from typing import Optional, Callable, Dict, Any
-from enum import Enum
+from typing import Optional, Callable, Dict
+from PySide6.QtCore import QObject, Signal
 
-
-class CANInterface(Enum):
-    """Supported CAN interface types"""
-    SOCKETCAN = "socketcan"
-    VIRTUAL = "virtual"
-
-
-class CANManager:
+class CANManager(QObject):
     """
-    Hardware Abstraction Layer for CAN bus communication.
-    Abstracts SocketCAN (Linux) and provides virtual mode for cross-platform development.
+    HAL that handles the bridge between the physical CAN-SPI Click
+    and the Qt/QML Dashboard.
     """
-    
+    # Signals for Team C (Dashboard)
+    rpm_changed = Signal(int)
+    voltage_changed = Signal(float)
+    current_changed = Signal(float)
+    torque_changed = Signal(float)
+    duty_changed = Signal(float)
+
     def __init__(self, interface: str = "can0", virtual: bool = False):
-        """
-        Initialize CAN Manager
-        
-        Args:
-            interface: CAN interface name (e.g., "can0" for SocketCAN)
-            virtual: If True, use virtual CAN mode (for development/testing)
-        """
+        super().__init__()
         self.interface = interface
         self.virtual = virtual
-        self.socket: Optional[socket.socket] = None
+        self.bus: Optional[can.BusABC] = None
         self.running = False
-        self.receive_thread: Optional[threading.Thread] = None
-        self.callbacks: Dict[int, Callable] = {}  # CAN ID -> callback mapping
-        self.lock = threading.Lock()
-        
+        self.listener_thread: Optional[threading.Thread] = None
+
+        # 130KV Motor Constant
+        self.KT = 0.0735 
+
     def connect(self) -> bool:
-        """
-        Connect to CAN bus
-        
-        Returns:
-            True if connection successful, False otherwise
-        """
-        if self.virtual:
-            # Virtual mode - no actual hardware connection needed
-            self.running = True
-            return True
-        
+        """Connects to the bus (SocketCAN on Pi, Virtual on Mac)"""
         try:
-            # Create SocketCAN socket
-            self.socket = socket.socket(socket.AF_CAN, socket.SOCK_RAW, socket.CAN_RAW)
-            self.socket.bind((self.interface,))
-            self.running = True
-            return True
-        except OSError as e:
-            print(f"Failed to connect to CAN interface {self.interface}: {e}")
-            return False
-    
-    def disconnect(self):
-        """Disconnect from CAN bus"""
-        self.running = False
-        if self.socket:
-            try:
-                self.socket.close()
-            except:
-                pass
-            self.socket = None
-        
-        if self.receive_thread and self.receive_thread.is_alive():
-            self.receive_thread.join(timeout=1.0)
-    
-    def register_callback(self, can_id: int, callback: Callable[[bytes], None]):
-        """
-        Register a callback for a specific CAN ID
-        
-        Args:
-            can_id: CAN message ID to listen for
-            callback: Function to call when message received (takes bytes as argument)
-        """
-        with self.lock:
-            self.callbacks[can_id] = callback
-    
-    def unregister_callback(self, can_id: int):
-        """Unregister callback for a CAN ID"""
-        with self.lock:
-            self.callbacks.pop(can_id, None)
-    
-    def send(self, can_id: int, data: bytes) -> bool:
-        """
-        Send CAN message
-        
-        Args:
-            can_id: CAN message ID
-            data: Message payload (max 8 bytes)
+            if self.virtual:
+                self.bus = can.interface.Bus(channel='test', bustype='virtual')
+                print("[CAN] Connected to Virtual Interface")
+            else:
+                # Based on setup: 500000 bitrate, 10MHz handled by OS overlay
+                self.bus = can.interface.Bus(channel=self.interface, bustype='socketcan')
+                print(f"[CAN] Connected to {self.interface} at 500k")
             
-        Returns:
-            True if sent successfully, False otherwise
-        """
-        if not self.running:
-            return False
-        
-        if self.virtual:
-            # In virtual mode, messages are just logged
-            print(f"[VIRTUAL CAN] TX: ID=0x{can_id:03X}, Data={data.hex()}")
-            return True
-        
-        if not self.socket:
-            return False
-        
-        try:
-            # SocketCAN format: (can_id, flags, data)
-            can_pkt = struct.pack("=IB3x8s", can_id, 0, data[:8])
-            self.socket.send(can_pkt)
+            self.running = True
             return True
         except Exception as e:
-            print(f"Failed to send CAN message: {e}")
+            print(f"[CAN] Connection Error: {e}")
             return False
-    
-    def _receive_loop(self):
-        """Internal receive loop (runs in separate thread)"""
-        if self.virtual:
-            # Virtual mode doesn't need a receive loop
+
+    def start_listening(self):
+        """Starts the background thread to process VESC telemetry"""
+        if not self.bus:
             return
-        
+        self.listener_thread = threading.Thread(target=self._listen_loop, daemon=True)
+        self.listener_thread.start()
+
+    def _listen_loop(self):
+        """Processes incoming VESC Extended 29-bit CAN frames"""
         while self.running:
-            try:
-                if not self.socket:
-                    break
-                
-                # Receive CAN frame (up to 16 bytes: can_id + flags + 8 bytes data)
-                can_pkt = self.socket.recv(16)
-                if len(can_pkt) < 8:
-                    continue
-                
-                # Unpack: can_id (4 bytes), flags (1 byte), padding (3 bytes), data (8 bytes)
-                can_id, flags = struct.unpack("=IB3x", can_pkt[:8])
-                data = can_pkt[8:8+8]
-                
-                # Call registered callback
-                with self.lock:
-                    callback = self.callbacks.get(can_id)
-                    if callback:
-                        try:
-                            callback(data)
-                        except Exception as e:
-                            print(f"Error in CAN callback for ID 0x{can_id:03X}: {e}")
-                            
-            except socket.timeout:
+            msg = self.bus.recv(timeout=1.0)
+            if msg is None:
                 continue
-            except Exception as e:
-                if self.running:
-                    print(f"Error receiving CAN message: {e}")
-                break
-    
-    def start_receive_thread(self):
-        """Start background thread for receiving CAN messages"""
-        if self.virtual:
-            return
-        
-        if self.receive_thread and self.receive_thread.is_alive():
-            return
-        
-        self.receive_thread = threading.Thread(target=self._receive_loop, daemon=True)
-        self.receive_thread.start()
-    
-    def inject_virtual_message(self, can_id: int, data: bytes):
-        """
-        Inject a virtual CAN message (for testing/virtual mode)
-        
-        Args:
-            can_id: CAN message ID
-            data: Message payload
-        """
-        if not self.virtual:
-            return
-        
-        with self.lock:
-            callback = self.callbacks.get(can_id)
-            if callback:
-                try:
-                    callback(data)
-                except Exception as e:
-                    print(f"Error in virtual CAN callback for ID 0x{can_id:03X}: {e}")
+
+            # VESC IDs use Extended format. 
+            # We shift 8 bits to extract the Packet Type (Status 1, 5, etc.)
+            packet_id = msg.arbitration_id >> 8
+
+            # STATUS 1: ERPM, Current, Duty Cycle
+            if packet_id == 0x09:
+                erpm, current_x10, duty_x1000 = struct.unpack(">ihh", msg.data[:8])
+                rpm = erpm / 7 # 7 pole pairs for 80100
+                current = current_x10 / 10.0
+                torque = current * self.KT
+
+                self.rpm_changed.emit(int(rpm))
+                self.current_changed.emit(current)
+                self.torque_changed.emit(round(torque, 2))
+                self.duty_changed.emit(duty_x1000 / 10.0)
+
+            # STATUS 5: Voltage, Tachometer
+            elif packet_id == 0x1B:
+                # Voltage is located at offset 4 (2 bytes unsigned short)
+                voltage_x10 = struct.unpack_from(">H", msg.data, 4)[0]
+                self.voltage_changed.emit(voltage_x10 / 10.0)
+
+    def inject_mock_data(self, can_id: int, data: bytes):
+        """Helper for Team B to simulate packets on Mac"""
+        if self.virtual and self.bus:
+            msg = can.Message(arbitration_id=can_id, data=data, is_extended_id=True)
+            self.bus.send(msg)
